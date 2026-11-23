@@ -65,6 +65,21 @@ footer{color:var(--muted);font-size:.82rem;text-align:center;margin-top:40px;bor
   .intro h1{font-size:1.35rem}
   section.deck h2{font-size:1.3rem}
 }
+mark.hl{background:#ffe066;color:#1d2330;border-radius:3px;padding:0 1px;-webkit-box-decoration-break:clone;box-decoration-break:clone}
+mark.hl[data-c="green"]{background:#b9f0c9}
+mark.hl[data-c="blue"]{background:#bfdcff}
+mark.hl[data-c="pink"]{background:#ffc7e0}
+#hl-bar{position:fixed;left:50%;transform:translateX(-50%);bottom:18px;z-index:30;display:none;gap:8px;align-items:center;background:var(--card);border:1px solid var(--border);border-radius:999px;padding:7px 12px;box-shadow:0 8px 24px rgba(0,0,0,.18)}
+#hl-bar.on{display:flex}
+#hl-bar .lbl{font-size:.8rem;color:var(--muted);margin-right:2px}
+#hl-bar button{width:28px;height:28px;border-radius:50%;border:2px solid var(--border);cursor:pointer;padding:0}
+#hl-bar button[data-c="yellow"]{background:#ffe066}
+#hl-bar button[data-c="green"]{background:#b9f0c9}
+#hl-bar button[data-c="blue"]{background:#bfdcff}
+#hl-bar button[data-c="pink"]{background:#ffc7e0}
+#hl-bar button.txt{width:auto;border-radius:999px;padding:0 10px;background:transparent;color:var(--fg);font-size:.82rem}
+button.tool{border:1px solid var(--border);background:transparent;color:var(--fg);border-radius:8px;padding:6px 10px;cursor:pointer;font-size:.9rem}
+@media print{#hl-bar,header.top{display:none}}
 </style>
 </head>
 <body>
@@ -100,13 +115,14 @@ footer{color:var(--muted);font-size:.82rem;text-align:center;margin-top:40px;bor
       </ul>
     </details>
     <button id="theme" type="button" aria-label="Toggle light/dark theme">Theme</button>
+    <button id="hl-clear" class="tool" type="button">Clear highlights</button>
   </nav>
 </div></header>
 <main>
 <div class="intro">
   <h1>Distributed Systems: Study Guide</h1>
   <p>Monsoon 2026 · covers all 24 lecture decks, with 76 key diagrams from the slides embedded.</p>
-  <p>Use the Contents menu to jump to a lecture. Definitions are shaded green. Exam pointers are shaded blue.</p>
+  <p>Use the Contents menu to jump to a lecture. Definitions are shaded green. Exam pointers are shaded blue. Select any text to highlight it. Highlights are saved in this browser only.</p>
 </div>
 <section class="deck" id="lecture1">
 <h2>Lecture 1: Introduction to Distributed Systems</h2>
@@ -2209,6 +2225,14 @@ Otherwise the reply is deferred. S<sub>j</sub> sets RD<sub>j</sub>[i] = 1.</li>
 </section>
 <footer>Study aid built from the course lecture slides (Distributed Systems, IIIT Hyderabad, Monsoon 2026). Diagrams are reproduced from those slides.</footer>
 </main>
+<div id="hl-bar" role="toolbar" aria-label="Highlight selection">
+  <span class="lbl">Highlight</span>
+  <button type="button" data-c="yellow" aria-label="Yellow highlight"></button>
+  <button type="button" data-c="green" aria-label="Green highlight"></button>
+  <button type="button" data-c="blue" aria-label="Blue highlight"></button>
+  <button type="button" data-c="pink" aria-label="Pink highlight"></button>
+  <button type="button" class="txt" data-act="remove">Remove</button>
+</div>
 <script>
 (function(){
   var root=document.documentElement, btn=document.getElementById('theme');
@@ -2224,6 +2248,83 @@ Otherwise the reply is deferred. S<sub>j</sub> sets RD<sub>j</sub>[i] = 1.</li>
   document.querySelectorAll('details.toc a').forEach(function(a){
     a.addEventListener('click',function(){ document.querySelector('details.toc').open=false; });
   });
+})();
+</script>
+<script>
+(function(){
+  var KEY='ds-guide-highlights-v1';
+  var main=document.querySelector('main');
+  var bar=document.getElementById('hl-bar');
+  var clearBtn=document.getElementById('hl-clear');
+  var hls=[], lastSpan=null;
+  function load(){ try{ var v=JSON.parse(localStorage.getItem(KEY)||'[]'); return Array.isArray(v)?v:[]; }catch(e){ return []; } }
+  function save(){ try{ localStorage.setItem(KEY, JSON.stringify(hls)); }catch(e){} }
+  function textNodes(){
+    var out=[], w=document.createTreeWalker(main, NodeFilter.SHOW_TEXT, null), n;
+    while((n=w.nextNode())){ out.push(n); }
+    return out;
+  }
+  function offsetOf(node, off){ var r=document.createRange(); r.setStart(main,0); r.setEnd(node,off); return r.toString().length; }
+  function unwrapAll(){
+    var ms=main.querySelectorAll('mark.hl');
+    for(var i=0;i<ms.length;i++){
+      var m=ms[i], p=m.parentNode;
+      while(m.firstChild){ p.insertBefore(m.firstChild,m); }
+      p.removeChild(m); p.normalize();
+    }
+  }
+  function applyOne(h){
+    var pos=0, nodes=textNodes();
+    for(var i=0;i<nodes.length;i++){
+      var t=nodes[i], len=t.data.length, ns=pos, ne=pos+len;
+      pos=ne;
+      if(len===0 || ne<=h.s || ns>=h.e) continue;
+      var a=Math.max(h.s,ns)-ns, b=Math.min(h.e,ne)-ns;
+      if(b<len) t.splitText(b);
+      var mid = a>0 ? t.splitText(a) : t;
+      var m=document.createElement('mark'); m.className='hl'; m.setAttribute('data-c', h.c);
+      mid.parentNode.insertBefore(m, mid); m.appendChild(mid);
+    }
+  }
+  function renderAll(){
+    unwrapAll();
+    for(var i=0;i<hls.length;i++){ try{ applyOne(hls[i]); }catch(e){} }
+  }
+  function removeRange(s,e){
+    var out=[];
+    hls.forEach(function(h){
+      if(h.e<=s || h.s>=e){ out.push(h); return; }
+      if(h.s<s) out.push({s:h.s,e:s,c:h.c});
+      if(h.e>e) out.push({s:e,e:h.e,c:h.c});
+    });
+    hls=out;
+  }
+  document.addEventListener('selectionchange', function(){
+    var sel=window.getSelection(), ok=false;
+    lastSpan=null;
+    if(sel && sel.rangeCount && !sel.isCollapsed){
+      var r=sel.getRangeAt(0);
+      if(main.contains(r.commonAncestorContainer) && r.toString().trim().length){
+        lastSpan={s:offsetOf(r.startContainer,r.startOffset), e:offsetOf(r.endContainer,r.endOffset)};
+        ok=true;
+      }
+    }
+    bar.classList.toggle('on', ok);
+  });
+  bar.addEventListener('mousedown', function(e){ e.preventDefault(); });
+  bar.addEventListener('click', function(e){
+    var b=e.target.closest('button');
+    if(!b || !lastSpan || lastSpan.e<=lastSpan.s) return;
+    if(b.getAttribute('data-act')==='remove'){ removeRange(lastSpan.s, lastSpan.e); }
+    else { hls.push({s:lastSpan.s, e:lastSpan.e, c:b.getAttribute('data-c')}); }
+    save(); renderAll();
+    lastSpan=null; bar.classList.remove('on');
+    try{ window.getSelection().removeAllRanges(); }catch(err){}
+  });
+  clearBtn.addEventListener('click', function(){
+    if(hls.length && window.confirm('Remove all highlights on this page?')){ hls=[]; save(); renderAll(); }
+  });
+  try{ hls=load(); renderAll(); }catch(e){}
 })();
 </script>
 </body>
